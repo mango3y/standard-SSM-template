@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd
+                           http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+                           http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!-- 配置文件参数化(参数占位符) -->
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+
+    <!-- 连接池Druid -->
+    <bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource" init-method="init" destroy-method="close">
+        <!-- 基本配置 -->
+        <property name="driverClassName" value="${jdbc.driverClassName}"/>
+        <property name="url" value="${jdbc.jdbcUrl}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+
+        <!-- Druid连接池可选参数 -->
+        <!-- 配置初始化大小、最小、最大 -->
+        <property name="initialSize" value="${jdbc.initialSize}"/>
+        <property name="minIdle" value="${jdbc.minIdle}"/>
+        <property name="maxActive" value="${jdbc.maxActive}"/>
+
+        <!--配置获取连接等待超时的时间 -->
+        <property name="maxWait" value="${jdbc.maxWait}"/>
+
+        <!-- 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒 -->
+        <property name="timeBetweenEvictionRunsMillis" value="${jdbc.timeBetweenEvictionRunsMillis}"/>
+
+        <!--配置一个连接在池中最小生存的时间，单位是毫秒 -->
+        <property name="minEvictableIdleTimeMillis" value="${jdbc.minEvictableIdleTimeMillis}"/>
+    </bean>
+
+    <!--工厂bean: 生成SqlSessionFactory -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!-- 注入连接池 -->
+        <property name="dataSource" ref="dataSource"/>
+        <!-- 注入dao-mapper文件信息，如果映射文件和dao接口同包且同名，则此配置可以省略 -->
+        <property name="mapperLocations">
+            <list>
+                <value>classpath:cn/mango3y/dao/*.xml</value>
+            </list>
+        </property>
+        <!-- 为dao-mapper文件中的实体 定义缺省包(默认)路径
+            如：<select id="queryAll" resultType="User">中 User类可以不用写全类名
+        -->
+        <property name="typeAliasesPackage" value="cn.mango3y.entity"/>
+
+        <property name="plugins">
+            <array>
+                <bean class="com.github.pagehelper.PageInterceptor">
+                    <property name="properties">
+                        <props>
+                            <!--如果请求的页面号数不在合理值范围内，则调整到1/max-->
+                            <prop key="reasonable">true</prop>
+                        </props>
+                    </property>
+                </bean>
+            </array>
+        </property>
+
+    </bean>
+
+    <!-- mapperScannerConfigurer -->
+    <!-- 管理DAO实现类的创建，并创建DAO对象，存入工厂管理 -->
+    <!-- 所以可以直接从spring工厂取得DAO对象，比如context.getBean("userDAO")可直接获取根据UserDAO接口和mapper文件创造出来的UserDAO实现类 -->
+    <bean id="mapperScannerConfigurer" class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <!-- dao接口所在的包，如果有多个包，可以用逗号或分号分隔 -->
+        <property name="basePackage" value="cn.mango3y.dao"/>
+        <!-- 如果工厂中只有一个Sq1SessionFactory的bean，此配置可省略 -->
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+    <!-- 告知spring注解位置 -->
+    <!-- 涉及细节：
+            1、可以注意到mvc.xml中也有注解扫描的配置<context:component-scan base-package="cn.mango3y.controller"/>
+                这样配置会有扫描范围的重合（同一个包下的类被两个工厂创建），造成工厂污染（不该某工厂生产的生产了），
+                例如spring工厂扫描了controller包。
+            2、在mvc.xml中（springmvc工厂），为了解决这个问题，给<context:component-scan>标签加use-default-filters="false"，
+                意思是在这个包中所有注解自动忽略，同时增加以下子标签，表示依旧要扫描有@Controller注解的类：
+                <context:include-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+                最后，不用把base-package的包范围写那么详细了，base-package="cn.mango3y"即可
+            3、在spring-context.xml（spring工厂）中做类似操作，但略有不同。表示除了@Controller注解以外其它的都扫。
+            4、这样设置后，更好分割了两个工厂的职责
+     -->
+    <context:component-scan base-package="cn.mango3y" use-default-filters="true">
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+    <!-- 事务相关 -->
+    <!-- 1.引入一个事务管理器，其中依赖DataSource,借以获得连接，进而控制事务逻辑 -->
+    <bean id="tx" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- @Transactional，指定tx为注解驱动 -->
+    <!--有tx和这个之后，就可以在service类中进行事务控制了-->
+    <tx:annotation-driven transaction-manager="tx"/>
+
+<!--    &lt;!&ndash; 添加如下配置，启用aop注解 &ndash;&gt;
+    <aop:aspectj-autoproxy/>-->
+    
+</beans>
